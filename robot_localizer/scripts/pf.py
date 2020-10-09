@@ -46,8 +46,8 @@ class ParticleFilter(object):
         self.tf_broadcaster = TransformBroadcaster()        
         
         # Particle filter attributes.
-        # self.particle_cloud = [] TODO Decide if we want to make an object or just use a list of Particle objects
-        self.xy_theta # Pose estimates, stored as a triple (x, y, theta)
+        self.particle_cloud = [] # TODO Abstract this later if we want
+        self.xy_theta = [] # Pose estimates, stored as a triple (x, y, theta)
         self.odom_frame = "odom"
         self.base_frame = "base_link"
 
@@ -71,7 +71,13 @@ class ParticleFilter(object):
 
         self.transform_helper.fix_map_to_odom_transform(self.robot_pose, timestamp)
 
-    def create_particle_cloud():
+    def normalize_particles(self):
+        """
+        TODO
+        """
+        pass
+
+    def create_particle_cloud(self):
         """
         TODO Create a particle cloud, normalize, update pose.
         TODO Decide whether we want to incorporate a particle cloud object as well.        
@@ -83,14 +89,14 @@ class ParticleFilter(object):
         self.normalize_particles()
         self.update_pose_estimate(timestamp)   
     
-    def resample():
+    def resample(self):
         """
         TODO Use probability, resample points.
         TODO Improve docstring, add params etc.
         """
         pass
     
-    def publish_particle_viz(msg):
+    def publish_particle_viz(self, msg):
         """
         Publish a visualization of the particles for use in rviz.
         TODO Improve docstring, add params etc.     
