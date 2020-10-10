@@ -44,7 +44,9 @@ class ParticleFilter(object):
         self.particle_cloud_config = {
             "n": 300,
             "xy_spread_size": 0.2,
-            "theta_spread_size": 20
+            "theta_spread_size": 20,
+            "xy_update_thresh": 0.2,
+            "theta_update_thresh": 20
         }
 
         # Pose estimates, stored as a triple (x, y, theta)
@@ -98,8 +100,9 @@ class ParticleFilter(object):
         Ensures particle weights sum to 1
         """
         total_w = sum(p.w for p in self.particle_cloud)
-        for i in range(len(self.particle_cloud)):
-            self.particle_cloud[i].w /= total_w
+        if total_w > 1:
+            for i in range(len(self.particle_cloud)):
+                self.particle_cloud[i].w /= total_w
 
     def create_particle_cloud(self, timestamp):
         """
@@ -138,7 +141,6 @@ class ParticleFilter(object):
     def publish_particle_viz(self, msg):
         """
         Publish a visualization of the particles for use in rviz.
-        TODO Improve docstring, add params etc.
         """
         self.particle_pub.publish(
             PoseArray(
@@ -148,9 +150,53 @@ class ParticleFilter(object):
                 poses=[
                     p.as_pose() for p in self.particle_cloud]))
 
+    def abs_pose_distance(self, pose1, pose2):
+        """
+        Floating point absolute distance between pose triples
+        """
+        return [math.fabs(v1 - v2) for (v1, v2) in zip(pose1, pose2)]
+
+    def update_thresholds_met(self, msg):
+        """
+        Return whether update thresholds are met
+        Guarantee self.laser_pose and self.odom_pose for updates
+        """
+        # calculate pose of laser relative to the robot base
+        p = PoseStamped(header=Header(stamp=rospy.Time(0),
+                                      frame_id=msg.header.frame_id))
+        self.laser_pose = self.tf_listener.transformPose(self.base_frame, p)
+
+        # find out where the robot thinks it is based on its odometry
+        p = PoseStamped(header=Header(stamp=msg.header.stamp,
+                                      frame_id=self.base_frame),
+                        pose=Pose())
+        self.odom_pose = self.tf_listener.transformPose(self.odom_frame, p)
+
+        # store the the odometry pose into (x,y,theta)
+        current_pose = self.transform_helper.convert_pose_to_xy_and_theta(
+            self.odom_pose.pose)
+
+        # if not defined yet, robot needs to move more
+        if not hasattr(self, "old_pose"):
+            self.old_pose = current_pose
+            return False
+
+        # return if update thresholds are exceeded
+        x_d, y_d, theta_d = self.abs_pose_distance(
+            self.old_pose, current_pose)
+        return x_d > self.particle_cloud_config["xy_update_thresh"] or \
+            y_d > self.particle_cloud_config["xy_update_thresh"] or \
+            theta_d > self.particle_cloud_config["theta_update_thresh"]
+
+    def odom_update(self, msg):
+        pass
+
+    def laser_update(self, msg):
+        pass
+
     def laser_scan_callback(self, msg):
         """
-        Process incommming laser scan data.
+        Process incomming laser scan data.
         TODO Improve docstring, add params etc.
         """
         # TODO Make sure we have set the initial pose
@@ -159,12 +205,17 @@ class ParticleFilter(object):
                 not(self.tf_listener.canTransform(self.base_frame, self.odom_frame, msg.header.stamp)):
             return
 
-        # TODO Find laser pose relative to the robot
-        # TODO Find robot position by odometry
-        # TODO If we don't have a particle cloud, initialize one. If we do, update it as needed.
-        # TODO Update robot pose
-        self.update_pose_estimate(msg.header.stamp)
-        self.resample()
+
+        if self.update_thresholds_met(msg):
+            # TODO quick math
+            self.odom_update(msg)
+            self.laser_update(msg)
+
+            # TODO Update robot pose
+            self.normalize_particles()
+            self.update_pose_estimate(msg.header.stamp)
+            self.resample()
+
         self.publish_particle_viz(msg)
 
     def run(self):
