@@ -4,6 +4,9 @@
 TODO What was the goal of your project?
 # Solution
 TODO How did you solve the problem? (Note: this doesn’t have to be super-detailed, you should try to explain what you did at a high-level so that others in the class could reasonably understand what you did).
+
+We implemented the particle filter algorithm, which localized the robot.
+
 # Design Decisions
 TODO Describe a design decision you had to make when working on your project and what you ultimately did (and why)? These design decisions could be particular choices for how you implemented some part of an algorithm or perhaps a decision regarding which of two external packages to use in your project.'
 # Reflection
