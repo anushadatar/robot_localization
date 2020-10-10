@@ -51,6 +51,7 @@ class ParticleFilter(object):
 
         # Pose estimates, stored as a triple (x, y, theta)
         self.xy_theta = None
+        self.pose_delta = [0, 0, 0]
         self.base_frame = "base_link"   # the frame of the robot base
         self.map_frame = "map"          # the name of the map coordinate frame
         self.odom_frame = "odom"        # the name of the odometry coordinate frame
@@ -59,6 +60,7 @@ class ParticleFilter(object):
         rospy.Subscriber("initialpose",
                          PoseWithCovarianceStamped,
                          self.initialize_pose_estimate)
+        self.pose_set = False
 
         # Publish particle cloud for rviz.
         self.particle_pub = rospy.Publisher("particlecloud",
@@ -77,9 +79,8 @@ class ParticleFilter(object):
         """
         self.xy_theta = \
             self.transform_helper.convert_pose_to_xy_and_theta(msg.pose.pose)
-        # TODO Implement any other initialization, maybe have a boolean about
-        # if this happens
         self.create_particle_cloud(msg.header.stamp)
+        self.pose_set = True
 
     def update_pose_estimate(self, timestamp):
         """
@@ -100,7 +101,7 @@ class ParticleFilter(object):
         Ensures particle weights sum to 1
         """
         total_w = sum(p.w for p in self.particle_cloud)
-        if total_w > 1:
+        if total_w > 1.0:
             for i in range(len(self.particle_cloud)):
                 self.particle_cloud[i].w /= total_w
 
@@ -150,11 +151,12 @@ class ParticleFilter(object):
                 poses=[
                     p.as_pose() for p in self.particle_cloud]))
 
-    def abs_pose_distance(self, pose1, pose2):
+    def update_pose_delta(self, pose1, pose2):
         """
-        Floating point absolute distance between pose triples
+        Floating point distance between pose triples
         """
-        return [math.fabs(v1 - v2) for (v1, v2) in zip(pose1, pose2)]
+        self.pose_delta = [(v1 - v2) for (v1, v2) in zip(pose1, pose2)]
+        return self.pose_delta
 
     def update_thresholds_met(self, msg):
         """
@@ -182,16 +184,21 @@ class ParticleFilter(object):
             return False
 
         # return if update thresholds are exceeded
-        x_d, y_d, theta_d = self.abs_pose_distance(
-            self.old_pose, current_pose)
-        return x_d > self.particle_cloud_config["xy_update_thresh"] or \
-            y_d > self.particle_cloud_config["xy_update_thresh"] or \
-            theta_d > self.particle_cloud_config["theta_update_thresh"]
+        x_d, y_d, theta_d = self.update_pose_delta(self.old_pose, current_pose)
+        return math.fabs(x_d) > self.particle_cloud_config["xy_update_thresh"] or \
+            math.fabs(y_d) > self.particle_cloud_config["xy_update_thresh"] or \
+            math.fabs(theta_d) > self.particle_cloud_config["theta_update_thresh"]
 
     def odom_update(self, msg):
+        """
+        TODO Use self.pose_delta (guaranteed) to update particle locations
+        """
         pass
 
     def laser_update(self, msg):
+        """
+        TODO Use scan data in msg to update particle weights
+        """
         pass
 
     def laser_scan_callback(self, msg):
@@ -199,19 +206,19 @@ class ParticleFilter(object):
         Process incomming laser scan data.
         TODO Improve docstring, add params etc.
         """
-        # TODO Make sure we have set the initial pose
+        if not self.pose_set:
+            return
 
         if not(self.tf_listener.canTransform(self.base_frame, msg.header.frame_id, msg.header.stamp)) or \
                 not(self.tf_listener.canTransform(self.base_frame, self.odom_frame, msg.header.stamp)):
             return
-
 
         if self.update_thresholds_met(msg):
             # TODO quick math
             self.odom_update(msg)
             self.laser_update(msg)
 
-            # TODO Update robot pose
+            # TODO ensure particles stay normalized through pose update
             self.normalize_particles()
             self.update_pose_estimate(msg.header.stamp)
             self.resample()
