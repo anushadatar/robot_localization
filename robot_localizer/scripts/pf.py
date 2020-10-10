@@ -191,24 +191,31 @@ class ParticleFilter(object):
 
     def odom_update(self, msg):
         """
-        TODO Use self.pose_delta (guaranteed) to update particle locations
+        Use self.pose_delta to update particle locations
         """
+        x_d, y_d, theta_d = self.pose_delta
         pass
 
     def laser_update(self, msg):
         """
-        TODO Use scan data in msg to update particle weights
+        Use scan data in msg to update particle weights
+        TODO Confirm this weighting scheme works
         """
-        pass
+        for i in range(len(self.particle_cloud)):
+            o_d = self.occupancy_field.get_closest_obstacle_distance(
+                self.particle_cloud[i].x, self.particle_cloud[i].y)
+
+            if not(math.isnan(o_d)) and o_d != 0:
+                self.particle_cloud[i].w = 1.0/o_d
 
     def laser_scan_callback(self, msg):
         """
-        Process incomming laser scan data.
-        TODO Improve docstring, add params etc.
+        Process incoming laser scan data.
         """
         if not self.pose_set:
             return
 
+        self.tf_listener.waitForTransform(self.base_frame, msg.header.frame_id, msg.header.stamp, rospy.Duration(0.5))
         if not(self.tf_listener.canTransform(self.base_frame, msg.header.frame_id, msg.header.stamp)) or \
                 not(self.tf_listener.canTransform(self.base_frame, self.odom_frame, msg.header.stamp)):
             return
