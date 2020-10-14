@@ -135,8 +135,8 @@ class ParticleFilter(object):
 
     def resample(self):
         """
-        TODO Use probability, resample points.
-        TODO Improve docstring, add params etc.
+        Select new distribution of particles, weighted by each particle's
+        weight w. Modify object's particle_cloud instance directly.
         """
         if len(self.particle_cloud):
             self.normalize_particles()
