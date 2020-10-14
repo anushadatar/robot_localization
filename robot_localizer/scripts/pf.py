@@ -48,6 +48,7 @@ class ParticleFilter(object):
             "xy_update_thresh": 0.2,
             "theta_update_thresh": 20
         }
+        self.minimum_weight = 0.00001
 
         # Pose estimates, stored as a triple (x, y, theta)
         self.xy_theta = None
@@ -137,7 +138,17 @@ class ParticleFilter(object):
         TODO Use probability, resample points.
         TODO Improve docstring, add params etc.
         """
-        pass
+        if len(self.particle_cloud):
+            self.normalize_particles()
+            # Resample points based on their weights.
+            self.particles = [particle.deep_copy() for particle in list(np.random.choice(
+                self.particles,
+                size=len(self.particles),
+                replace=True,
+                p=weights,
+            ))]
+        else:
+            print ("No particle cloud, did not resample successfully.")
 
     def publish_particle_viz(self, msg):
         """
