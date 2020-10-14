@@ -140,6 +140,7 @@ class ParticleFilter(object):
         """
         if len(self.particle_cloud):
             self.normalize_particles()
+            weights = [particle.w  if not math.isnan(particle.w) else self.minimum_weight for particle in self.particle_cloud]
             # Resample points based on their weights.
             self.particles = [particle.deep_copy() for particle in list(np.random.choice(
                 self.particles,
