@@ -11,6 +11,7 @@ import rospy
 import time
 import tf
 
+from copy import deepcopy
 from tf import TransformListener
 from tf import TransformBroadcaster
 
@@ -41,7 +42,7 @@ class ParticleFilter(object):
 
         # Particle filter attributes.
         self.particle_cloud = []
-        # Config attributes:
+        # Config attributes: TODO Document
             # n = Number of particles
             # xy_spread_size:
             # theta_spread_size:
@@ -56,8 +57,10 @@ class ParticleFilter(object):
         }
         self.minimum_weight = 0.00001
 
-        # Pose estimates, stored as a triple (x, y, theta)
+        # Pose estimate, stored as a triple (x, y, theta)
         self.xy_theta = None
+        # Pose estimate, stored as a pose. Useful for viz? # TODO is this true, if so add viz
+        self.current_pose_estimate = Pose()
         self.pose_delta = [0, 0, 0]
         self.base_frame = "base_link"   # the frame of the robot base
         self.map_frame = "map"          # the name of the map coordinate frame
@@ -84,31 +87,50 @@ class ParticleFilter(object):
         Initialize new pose estimate and particle filter. Store it as a
         triple as (x, y, theta).
         """
+        print("Got initial pose.")
         self.xy_theta = \
             self.transform_helper.convert_pose_to_xy_and_theta(msg.pose.pose)
         self.create_particle_cloud(msg.header.stamp)
         self.pose_set = True
 
-    def update_pose_estimate(self, timestamp):
+    def update_pose_estimate(self):
         """
         Update robot's pose estimate given particles.
-        TODO decide what to use to estimate (mean? mode?)
         TODO Improve docstring, add params etc.
+        
+        TODO This is still kind of an untested WIP
         """
-        # TODO Update this to be a real pose, computed based on particle
-        # likelihood.
-        # TODO Stop using the origin as a placeholder.
-        self.robot_pose = Pose()
+        self.normalize_particles()
+        
+        # Calculate the mean particle, offset by the normalized weights.
+        mean_x = 0
+        mean_y = 0
+        mean_x_angle = 0
+        mean_y_angle = 0
+        for particle in self.particle_cloud:
+            mean_x += particle.x * particle.w
+            mean_y += particle.y * particle.w
+            total_dist = math.sqrt((particle.x)**2 + (particle.y)**2)
+            mean_x_angle += total_dist * math.cos(particle.theta) * particle.w
+            mean_y_angle += total_dist * math.sin(particle.theta) * particle.w      
+        mean_theta = np.arctan2(float(mean_y_angle), (mean_x_angle))
+        mean_x /= self.particle_cloud_config["n"]
+        mean_y /= self.particle_cloud_config["n"]
+        
+        # TODO Make sure this actually returns the /correct/ pose.
+       
+        # Use particle methods to convert particle to pose.
+        # TODO if this is the correct strat, do something more elegant.
+        particle_mean = Particle(mean_x, mean_y, mean_theta)
+        self.current_pose_estimate = particle_mean.as_pose()
 
-        self.transform_helper.fix_map_to_odom_transform(
-            self.robot_pose, timestamp)
 
     def normalize_particles(self):
         """
         Ensures particle weights sum to 1
         """
         self.set_minimum_weight()
-        total_w = sum(p.w for p in self.particle_cloud if p is math.isnan())
+        total_w = sum(p.w for p in self.particle_cloud)
         if total_w > 1.0:
             for i in range(len(self.particle_cloud)):
                 self.particle_cloud[i].w /= total_w
@@ -147,7 +169,7 @@ class ParticleFilter(object):
             self.particle_cloud.append(Particle(x, y, theta, 1))
 
         self.normalize_particles()
-        self.update_pose_estimate(timestamp)
+        self.update_pose_estimate()
 
     def resample(self):
         """
@@ -158,9 +180,9 @@ class ParticleFilter(object):
             self.normalize_particles()
             weights = [particle.w  if not math.isnan(particle.w) else self.minimum_weight for particle in self.particle_cloud]
             # Resample points based on their weights.
-            self.particle_cloud = [particle.deep_copy() for particle in list(np.random.choice(
-                self.particles,
-                size=len(self.particles),
+            self.particle_cloud = [deepcopy(particle) for particle in list(np.random.choice(
+                self.particle_cloud,
+                size=len(self.particle_cloud),
                 replace=True,
                 p=weights,
             ))]
@@ -171,6 +193,7 @@ class ParticleFilter(object):
         """
         Publish a visualization of the particles for use in rviz.
         """
+        print(len(self.particle_cloud))
         self.particle_pub.publish(
             PoseArray(
                 header=Header(
@@ -222,10 +245,7 @@ class ParticleFilter(object):
         Use self.pose_delta to update particle locations
         """
         x_d, y_d, theta_d = self.pose_delta
-        
-
-
-        pass
+        # TODO Adjust particles by the delta!
 
     def laser_update(self, msg):
         """
@@ -259,9 +279,13 @@ class ParticleFilter(object):
 
             # TODO ensure particles stay normalized through pose update
             self.normalize_particles()
-            self.update_pose_estimate(msg.header.stamp)
+            self.update_pose_estimate()
             self.resample()
-
+            
+            # Send out next map to odom transform with updated pose estimate.
+            self.transform_helper.fix_map_to_odom_transform(self.current_pose_estimate, msg.header.stamp)
+            
+        print("particle vis")
         self.publish_particle_viz(msg)
 
     def run(self):
@@ -269,7 +293,7 @@ class ParticleFilter(object):
         TODO Improve docstring, add params etc.
         """
         r = rospy.Rate(5)
-
+        print("Startup")
         while not(rospy.is_shutdown()):
             # in the main loop all we do is continuously broadcast the latest
             # map to odom transform
