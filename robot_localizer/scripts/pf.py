@@ -41,6 +41,12 @@ class ParticleFilter(object):
 
         # Particle filter attributes.
         self.particle_cloud = []
+        # Config attributes:
+            # n = Number of particles
+            # xy_spread_size:
+            # theta_spread_size:
+            # xy_update_thresh:
+            # theta_update_thresh: 
         self.particle_cloud_config = {
             "n": 300,
             "xy_spread_size": 0.2,
@@ -64,7 +70,7 @@ class ParticleFilter(object):
         self.pose_set = False
 
         # Publish particle cloud for rviz.
-        self.particle_pub = rospy.Publisher("particlecloud",
+        self.particle_pub = rospy.Publisher("/particlecloud",
                                             PoseArray,
                                             queue_size=10)
         # Get input data from laser scan.
@@ -101,10 +107,20 @@ class ParticleFilter(object):
         """
         Ensures particle weights sum to 1
         """
-        total_w = sum(p.w for p in self.particle_cloud)
+        self.set_minimum_weight()
+        total_w = sum(p.w for p in self.particle_cloud if p is math.isnan())
         if total_w > 1.0:
             for i in range(len(self.particle_cloud)):
                 self.particle_cloud[i].w /= total_w
+
+    def set_minimum_weight(self):
+        """
+        Change any nan weights in self.particle_cloud to the minimum weight
+        value instead. Modifies self.particle_cloud directly.
+        """
+        for p in self.particle_cloud:
+            if math.isnan(p.w):
+                p.w = self.minimum_weight
 
     def create_particle_cloud(self, timestamp):
         """
@@ -142,7 +158,7 @@ class ParticleFilter(object):
             self.normalize_particles()
             weights = [particle.w  if not math.isnan(particle.w) else self.minimum_weight for particle in self.particle_cloud]
             # Resample points based on their weights.
-            self.particles = [particle.deep_copy() for particle in list(np.random.choice(
+            self.particle_cloud = [particle.deep_copy() for particle in list(np.random.choice(
                 self.particles,
                 size=len(self.particles),
                 replace=True,
@@ -206,6 +222,9 @@ class ParticleFilter(object):
         Use self.pose_delta to update particle locations
         """
         x_d, y_d, theta_d = self.pose_delta
+        
+
+
         pass
 
     def laser_update(self, msg):
@@ -230,6 +249,7 @@ class ParticleFilter(object):
         self.tf_listener.waitForTransform(self.base_frame, msg.header.frame_id, msg.header.stamp, rospy.Duration(0.5))
         if not(self.tf_listener.canTransform(self.base_frame, msg.header.frame_id, msg.header.stamp)) or \
                 not(self.tf_listener.canTransform(self.base_frame, self.odom_frame, msg.header.stamp)):
+            print("Failed to transform")
             return
 
         if self.update_thresholds_met(msg):
