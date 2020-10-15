@@ -41,7 +41,7 @@ class ParticleFilter(object):
 
         # Particle filter attributes.
         self.particle_cloud = []
-        # Config attributes:
+        # Config attributes: TODO Document
             # n = Number of particles
             # xy_spread_size:
             # theta_spread_size:
@@ -56,8 +56,10 @@ class ParticleFilter(object):
         }
         self.minimum_weight = 0.00001
 
-        # Pose estimates, stored as a triple (x, y, theta)
+        # Pose estimate, stored as a triple (x, y, theta)
         self.xy_theta = None
+        # Pose estimate, stored as a pose. Useful for viz? # TODO is this true, if so add viz
+        self.current_pose_estimate = Pose()
         self.pose_delta = [0, 0, 0]
         self.base_frame = "base_link"   # the frame of the robot base
         self.map_frame = "map"          # the name of the map coordinate frame
@@ -92,16 +94,35 @@ class ParticleFilter(object):
     def update_pose_estimate(self, timestamp):
         """
         Update robot's pose estimate given particles.
-        TODO decide what to use to estimate (mean? mode?)
         TODO Improve docstring, add params etc.
+        
+        TODO This is still kind of an untested WIP
         """
-        # TODO Update this to be a real pose, computed based on particle
-        # likelihood.
-        # TODO Stop using the origin as a placeholder.
-        self.robot_pose = Pose()
-
+        self.normalize_particles()
+        
+        # Calculate the mean particle, offset by the normalized weights.
+        mean_x = 0
+        mean_y = 0
+        mean_x_angle = 0
+        mean_y_angle = 0
+        for particle in self.particle_cloud:
+            mean_x += particle.x * particle.w
+            mean_y += particle.y * particle.w
+            total_dist = math.sqrt((particle.x)**2 + (particle.y)**2)
+            mean_x_angle += total_dist * math.cos(particle.theta) * particle.w
+            mean_y_angle += total_dist * math.sin(particle.theta) * particle.w      
+        mean_theta = np.arctan2(float(mean_y_angle), (mean_x_angle))
+        mean_x /= self.particle_cloud_config["n"]
+        mean_y /= self.particle_cloud_config["n"]
+        
+        # TODO Make sure this actually returns the /correct/ pose.
+       
+        # Use particle methods to convert particle to pose.
+        # TODO if this is the correct strat, do something more elegant.
+        self.particle_mean = Particle(mean_x, mean_y, mean_theta)
+        self.current_pose_estimate = particle_mean.as_pose()
         self.transform_helper.fix_map_to_odom_transform(
-            self.robot_pose, timestamp)
+            self.current_pose_estimate, timestamp)
 
     def normalize_particles(self):
         """
@@ -222,10 +243,7 @@ class ParticleFilter(object):
         Use self.pose_delta to update particle locations
         """
         x_d, y_d, theta_d = self.pose_delta
-        
-
-
-        pass
+        # TODO Determine whether this is sufficient
 
     def laser_update(self, msg):
         """
