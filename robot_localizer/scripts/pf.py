@@ -123,6 +123,8 @@ class ParticleFilter(object):
         # TODO if this is the correct strat, do something more elegant.
         particle_mean = Particle(mean_x, mean_y, mean_theta)
         self.current_pose_estimate = particle_mean.as_pose()
+        self.transform_helper.fix_map_to_odom_transform(
+            self.current_pose_estimate, timestamp)
 
 
     def normalize_particles(self):
@@ -193,6 +195,7 @@ class ParticleFilter(object):
         """
         Publish a visualization of the particles for use in rviz.
         """
+        print(len(self.particle_cloud))
         self.particle_pub.publish(
             PoseArray(
                 header=Header(
@@ -244,6 +247,7 @@ class ParticleFilter(object):
         Use self.pose_delta to update particle locations
         """
         x_d, y_d, theta_d = self.pose_delta
+
         # TODO Adjust particles by the delta!
 
     def laser_update(self, msg):
