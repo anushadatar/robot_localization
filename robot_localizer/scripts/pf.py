@@ -193,7 +193,6 @@ class ParticleFilter(object):
         """
         Publish a visualization of the particles for use in rviz.
         """
-        print(len(self.particle_cloud))
         self.particle_pub.publish(
             PoseArray(
                 header=Header(
@@ -269,7 +268,6 @@ class ParticleFilter(object):
         self.tf_listener.waitForTransform(self.base_frame, msg.header.frame_id, msg.header.stamp, rospy.Duration(0.5))
         if not(self.tf_listener.canTransform(self.base_frame, msg.header.frame_id, msg.header.stamp)) or \
                 not(self.tf_listener.canTransform(self.base_frame, self.odom_frame, msg.header.stamp)):
-            print("Failed to transform")
             return
 
         if self.update_thresholds_met(msg):
@@ -285,7 +283,6 @@ class ParticleFilter(object):
             # Send out next map to odom transform with updated pose estimate.
             self.transform_helper.fix_map_to_odom_transform(self.current_pose_estimate, msg.header.stamp)
             
-        print("particle vis")
         self.publish_particle_viz(msg)
 
     def run(self):
@@ -293,7 +290,6 @@ class ParticleFilter(object):
         TODO Improve docstring, add params etc.
         """
         r = rospy.Rate(5)
-        print("Startup")
         while not(rospy.is_shutdown()):
             # in the main loop all we do is continuously broadcast the latest
             # map to odom transform
