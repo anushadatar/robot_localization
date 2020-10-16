@@ -35,10 +35,11 @@ class ParticleFilter(object):
     def __init__(self):
         rospy.init_node('pf')
 
-        # Transform helpers
+        # Helper functions.
         self.transform_helper = TFHelper()
         self.tf_listener = TransformListener()
         self.tf_broadcaster = TransformBroadcaster()
+        self.occupancy_field = OccupancyField()
 
         # Particle filter attributes.
         self.particle_cloud = []
@@ -47,7 +48,7 @@ class ParticleFilter(object):
             # xy_spread_size:
             # theta_spread_size:
             # xy_update_thresh:
-            # theta_update_thresh: 
+            # theta_update_thresh:
         self.particle_cloud_config = {
             "n": 300,
             "xy_spread_size": 0.2,
@@ -57,30 +58,37 @@ class ParticleFilter(object):
         }
         self.minimum_weight = 0.00001
 
-        # Pose estimate, stored as a triple (x, y, theta)
+        # Robot location attributes.
+        # Pose estimate, stored as a triple (x, y, theta). Used to create particle cloud.
         self.xy_theta = None
-        # Pose estimate, stored as a pose. Useful for viz? # TODO is this true, if so add viz
+        # Pose estimate, stored as a pose message type.
         self.current_pose_estimate = Pose()
+        # The overall change in the pose of the robot.
         self.pose_delta = [0, 0, 0]
-        self.base_frame = "base_link"   # the frame of the robot base
-        self.map_frame = "map"          # the name of the map coordinate frame
-        self.odom_frame = "odom"        # the name of the odometry coordinate frame
-
+        # Whether or not there is an initial pose value.
+        self.pose_set = False
+        # The frame of the robot base.
+        self.base_frame = "base_link"
+        # The name of the map coordinate frame.
+        self.map_frame = "map"
+        # The name of the odom coordinate frame.
+        self.odom_frame = "odom"
+    
+        # ROS Publishers/Subscribers
         # Listen for new approximate initial robot location.
+        # Selected in rviz through the "2D Pose Estimate" button
         rospy.Subscriber("initialpose",
                          PoseWithCovarianceStamped,
                          self.initialize_pose_estimate)
-        self.pose_set = False
+        # Get input data from laser scan.
+        rospy.Subscriber("scan", LaserScan, self.laser_scan_callback)
 
         # Publish particle cloud for rviz.
         self.particle_pub = rospy.Publisher("/particlecloud",
                                             PoseArray,
                                             queue_size=10)
-        # Get input data from laser scan.
-        rospy.Subscriber("scan", LaserScan, self.laser_scan_callback)
 
-        # Initialize occupancy field
-        self.occupancy_field = OccupancyField()
+        # TODO Add some debugging prints, actually debug...
 
     def initialize_pose_estimate(self, msg):
         """
@@ -123,9 +131,6 @@ class ParticleFilter(object):
         # TODO if this is the correct strat, do something more elegant.
         particle_mean = Particle(mean_x, mean_y, mean_theta)
         self.current_pose_estimate = particle_mean.as_pose()
-        self.transform_helper.fix_map_to_odom_transform(
-            self.current_pose_estimate, timestamp)
-
 
     def normalize_particles(self):
         """
@@ -191,11 +196,10 @@ class ParticleFilter(object):
         else:
             print ("No particle cloud, did not resample successfully.")
 
-    def publish_particle_viz(self, msg):
+    def publish_particle_viz(self):
         """
-        Publish a visualization of the particles for use in rviz.
+        Publish a visualization of self.particle_cloud for use in rviz.
         """
-        print(len(self.particle_cloud))
         self.particle_pub.publish(
             PoseArray(
                 header=Header(
@@ -206,14 +210,15 @@ class ParticleFilter(object):
 
     def update_pose_delta(self, pose1, pose2):
         """
-        Floating point distance between pose triples
+        # TODO Should this be static or in helper functions?
+        Calculate floating point distance between pose triples.
         """
         self.pose_delta = [(v1 - v2) for (v1, v2) in zip(pose1, pose2)]
         return self.pose_delta
 
     def update_thresholds_met(self, msg):
         """
-        Return whether update thresholds are met
+        Return whether update thresholds are met # TODO make this docstring more specifc
         Guarantee self.laser_pose and self.odom_pose for updates
         """
         # calculate pose of laser relative to the robot base
@@ -275,19 +280,19 @@ class ParticleFilter(object):
             return
 
         if self.update_thresholds_met(msg):
-            # TODO quick math
+            # TODO Determine what else needs updating here, and make those updates!
             self.odom_update(msg)
             self.laser_update(msg)
 
-            # TODO ensure particles stay normalized through pose update
-            self.normalize_particles()
+            # Update the pose with the mean particle and resample.
             self.update_pose_estimate()
             self.resample()
             
             # Send out next map to odom transform with updated pose estimate.
             self.transform_helper.fix_map_to_odom_transform(self.current_pose_estimate, msg.header.stamp)
-            
-        self.publish_particle_viz(msg)
+
+        # Regardless of update, publish particle cloud visualization.
+        self.publish_particle_viz()
 
     def run(self):
         """
