@@ -86,6 +86,7 @@ class ParticleFilter(object):
         Initialize new pose estimate and particle filter. Store it as a
         triple as (x, y, theta).
         """
+        print("Got initial pose.")
         self.xy_theta = \
             self.transform_helper.convert_pose_to_xy_and_theta(msg.pose.pose)
         self.create_particle_cloud(msg.header.stamp)
@@ -119,7 +120,7 @@ class ParticleFilter(object):
        
         # Use particle methods to convert particle to pose.
         # TODO if this is the correct strat, do something more elegant.
-        self.particle_mean = Particle(mean_x, mean_y, mean_theta)
+        particle_mean = Particle(mean_x, mean_y, mean_theta)
         self.current_pose_estimate = particle_mean.as_pose()
         self.transform_helper.fix_map_to_odom_transform(
             self.current_pose_estimate, timestamp)
@@ -129,7 +130,7 @@ class ParticleFilter(object):
         Ensures particle weights sum to 1
         """
         self.set_minimum_weight()
-        total_w = sum(p.w for p in self.particle_cloud if p is math.isnan())
+        total_w = sum(p.w for p in self.particle_cloud)
         if total_w > 1.0:
             for i in range(len(self.particle_cloud)):
                 self.particle_cloud[i].w /= total_w
@@ -192,6 +193,7 @@ class ParticleFilter(object):
         """
         Publish a visualization of the particles for use in rviz.
         """
+        print(len(self.particle_cloud))
         self.particle_pub.publish(
             PoseArray(
                 header=Header(
@@ -279,7 +281,7 @@ class ParticleFilter(object):
             self.normalize_particles()
             self.update_pose_estimate(msg.header.stamp)
             self.resample()
-
+        print("particle vis")
         self.publish_particle_viz(msg)
 
     def run(self):
@@ -287,7 +289,7 @@ class ParticleFilter(object):
         TODO Improve docstring, add params etc.
         """
         r = rospy.Rate(5)
-
+        print("Startup")
         while not(rospy.is_shutdown()):
             # in the main loop all we do is continuously broadcast the latest
             # map to odom transform
