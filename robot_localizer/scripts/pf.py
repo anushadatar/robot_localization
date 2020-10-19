@@ -52,7 +52,7 @@ class ParticleFilter(object):
             "xy_update_thresh": 0.2,
             "theta_update_thresh": 20
         }
-        self.minimum_weight = 0.00001
+        self.minimum_weight = 0
 
         # Robot location attributes.
         # Pose estimate, stored as a triple (x, y, theta). Used to create particle cloud.
@@ -69,6 +69,9 @@ class ParticleFilter(object):
         self.map_frame = "map"
         # The name of the odom coordinate frame.
         self.odom_frame = "odom"
+        # The number of particles to incorporate in the mean value
+        self.particles_to_incoporate_in_mean = 100
+        
     
         # ROS Publishers/Subscribers
         # Listen for new approximate initial robot location.
@@ -85,6 +88,8 @@ class ParticleFilter(object):
                                             queue_size=10)
 
         # TODO Add some debugging prints, actually debug...
+        # Whether or not to print debugging messages.
+        self.debug = True
 
     def initialize_pose_estimate(self, msg):
         """
@@ -105,13 +110,13 @@ class ParticleFilter(object):
         TODO This is still kind of an untested WIP
         """
         self.normalize_particles()
-        
-        # Calculate the mean particle, offset by the normalized weights.
         mean_x = 0
         mean_y = 0
         mean_x_angle = 0
         mean_y_angle = 0
-        for particle in self.particle_cloud:
+        # Calculate the mean of the top  
+        particle_cloud_majority = sorted(self.particle_cloud, key=lambda x: x.w, reverse=True)
+        for particle in particle_cloud_majority:
             mean_x += particle.x * particle.w
             mean_y += particle.y * particle.w
             total_dist = math.sqrt((particle.x)**2 + (particle.y)**2)
@@ -120,11 +125,9 @@ class ParticleFilter(object):
         mean_theta = np.arctan2(float(mean_y_angle), (mean_x_angle))
         mean_x /= self.particle_cloud_config["n"]
         mean_y /= self.particle_cloud_config["n"]
-        
-        # TODO Make sure this actually returns the /correct/ pose.
+
        
         # Use particle methods to convert particle to pose.
-        # TODO if this is the correct strat, do something more elegant.
         particle_mean = Particle(mean_x, mean_y, mean_theta)
         self.current_pose_estimate = particle_mean.as_pose()
 
@@ -137,6 +140,7 @@ class ParticleFilter(object):
         if total_w > 1.0:
             for i in range(len(self.particle_cloud)):
                 self.particle_cloud[i].w /= total_w
+            
 
     def set_minimum_weight(self):
         """
@@ -179,18 +183,23 @@ class ParticleFilter(object):
         Select new distribution of particles, weighted by each particle's
         weight w. Modify object's particle_cloud instance directly.
         """
+        if self.debug:
+            print("Resampling.")
         if len(self.particle_cloud):
             self.normalize_particles()
             weights = [particle.w  if not math.isnan(particle.w) else self.minimum_weight for particle in self.particle_cloud]
             # Resample points based on their weights.
             self.particle_cloud = [deepcopy(particle) for particle in list(np.random.choice(
-                self.particle_cloud,
-                size=len(self.particle_cloud),
-                replace=True,
-                p=weights,
-            ))]
+                    self.particle_cloud,
+                    size=len(self.particle_cloud),
+                    replace=True,
+                    p=weights,
+                ))]
+                # TODO Should we be injecting noise here.
+          
         else:
-            print ("No particle cloud, did not resample successfully.")
+            if self.debug:
+                print ("No particle cloud, did not resample successfully.")
 
     def publish_particle_viz(self):
         """
@@ -209,7 +218,9 @@ class ParticleFilter(object):
         # TODO Should this be static or in helper functions?
         Calculate floating point distance between pose triples.
         """
-        self.pose_delta = [(v1 - v2) for (v1, v2) in zip(pose1, pose2)]
+        self.pose_delta[0] = pose2[0] - pose1[0]
+        self.pose_delta[1] = pose2[1] - pose1[1]
+        self.pose_delta[2] = self.transform_helper.angle_diff(pose2[2], pose1[2])
         return self.pose_delta
 
     def update_thresholds_met(self, msg):
@@ -249,7 +260,10 @@ class ParticleFilter(object):
         """
         x_d, y_d, theta_d = self.pose_delta
         # TODO Adjust particles by the delta!
-
+        for particle in self.particle_cloud:
+            particle.move([x_d, y_d])
+            particle.set_angle(theta_d)
+          
     def laser_update(self, msg):
         """
         Use scan data in msg to update particle weights
@@ -279,7 +293,7 @@ class ParticleFilter(object):
             self.odom_update(msg)
             self.laser_update(msg)
 
-            # Update the pose with the mean particle and resample.
+            # Update the self.current_pose_estimate with the mean particle and resample.
             self.update_pose_estimate()
             self.resample()
             

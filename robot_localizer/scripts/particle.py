@@ -5,6 +5,7 @@ Particle class for robot localization particle filter. Adapted from particle
 class given in assignment's pf_scaffold.py:
 https://github.com/comprobo20/robot_localization/blob/master/robot_localizer/scripts/pf_scaffold.py
 """
+import math
 import tf
 
 from geometry_msgs.msg import Pose, Point, Quaternion
@@ -37,10 +38,25 @@ class Particle(object):
         self.y = y
 
     def as_pose(self):
-        """ A helper function to convert a particle to a geometry_msgs/Pose message """
+        """ 
+        A helper function to convert a particle to a geometry_msgs/Pose message.
+        """
         orientation_tuple = tf.transformations.quaternion_from_euler(
             0, 0, self.theta)
         return Pose(position=Point(x=self.x, y=self.y, z=0), orientation=Quaternion(
             x=orientation_tuple[0], y=orientation_tuple[1], z=orientation_tuple[2], w=orientation_tuple[3]))
 
-    # TODO: define additional helper functions if needed
+    def move(self, delta):
+        """ 
+        Move the particle according to some array [x_delta, y_delta].
+        """
+        self.x += delta[0]
+        self.y += delta[1]
+
+    def set_angle(self, angle):
+        """
+        Set particle.theta to some normalized angle. Adapted from helper
+        function angle_normalize.
+        Angle should be some scalar value.
+        """
+        self.theta = math.atan2(math.sin(angle), math.cos(angle))
