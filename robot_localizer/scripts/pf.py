@@ -220,13 +220,13 @@ class ParticleFilter(object):
         # calculate pose of laser relative to the robot base
         p = PoseStamped(header=Header(stamp=rospy.Time(0),
                                       frame_id=msg.header.frame_id))
-        self.laser_pose = self.tf_listener.transformPose(self.base_frame, p)
+        self.laser_pose = self.tf_helper.tf_listener.transformPose(self.base_frame, p)
 
         # find out where the robot thinks it is based on its odometry
         p = PoseStamped(header=Header(stamp=msg.header.stamp,
                                       frame_id=self.base_frame),
                         pose=Pose())
-        self.odom_pose = self.tf_listener.transformPose(self.odom_frame, p)
+        self.odom_pose = self.tf_helper.tf_listener.transformPose(self.odom_frame, p)
 
         # store the the odometry pose into (x,y,theta)
         current_pose = self.transform_helper.convert_pose_to_xy_and_theta(
@@ -269,9 +269,9 @@ class ParticleFilter(object):
         if not self.pose_set:
             return
 
-        self.tf_listener.waitForTransform(self.base_frame, msg.header.frame_id, msg.header.stamp, rospy.Duration(0.5))
-        if not(self.tf_listener.canTransform(self.base_frame, msg.header.frame_id, msg.header.stamp)) or \
-                not(self.tf_listener.canTransform(self.base_frame, self.odom_frame, msg.header.stamp)):
+        self.tf_helper.tf_listener.waitForTransform(self.base_frame, msg.header.frame_id, msg.header.stamp, rospy.Duration(0.5))
+        if not(self.tf_helper.tf_listener.canTransform(self.base_frame, msg.header.frame_id, msg.header.stamp)) or \
+                not(self.tf_helper.tf_listener.canTransform(self.base_frame, self.odom_frame, msg.header.stamp)):
             return
 
         if self.update_thresholds_met(msg):
