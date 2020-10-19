@@ -12,8 +12,6 @@ import time
 import tf
 
 from copy import deepcopy
-from tf import TransformListener
-from tf import TransformBroadcaster
 
 from std_msgs.msg import Header, String
 from sensor_msgs.msg import LaserScan, PointCloud
@@ -37,8 +35,6 @@ class ParticleFilter(object):
 
         # Helper functions.
         self.transform_helper = TFHelper()
-        self.tf_listener = TransformListener()
-        self.tf_broadcaster = TransformBroadcaster()
         self.occupancy_field = OccupancyField()
 
         # Particle filter attributes.
@@ -252,7 +248,6 @@ class ParticleFilter(object):
         Use self.pose_delta to update particle locations
         """
         x_d, y_d, theta_d = self.pose_delta
-
         # TODO Adjust particles by the delta!
 
     def laser_update(self, msg):
