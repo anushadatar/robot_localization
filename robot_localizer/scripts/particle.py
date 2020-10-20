@@ -50,8 +50,8 @@ class Particle(object):
         """ 
         Move the particle according to some array [x_delta, y_delta].
         """
-        self.x += delta[0]
-        self.y += delta[1]
+        self.x -= delta[0]
+        self.y -= delta[1]
 
     def set_angle(self, angle):
         """

@@ -34,8 +34,8 @@ class ParticleFilter(object):
         rospy.init_node('pf')
 
         # Helper functions.
-        self.transform_helper = TFHelper()
         self.occupancy_field = OccupancyField()
+        self.transform_helper = TFHelper()
 
         # Particle filter attributes.
         self.particle_cloud = []
@@ -50,9 +50,9 @@ class ParticleFilter(object):
             "xy_spread_size": 0.2,
             "theta_spread_size": 10,
             "xy_update_thresh": 0.01,
-            "theta_update_thresh": 1
+            "theta_update_thresh": 0.5
         }
-        self.minimum_weight = 0
+        self.minimum_weight = 0.0001
 
         # Robot location attributes.
         # Pose estimate, stored as a triple (x, y, theta). Used to create particle cloud.
@@ -80,6 +80,7 @@ class ParticleFilter(object):
         rospy.Subscriber("initialpose",
                          PoseWithCovarianceStamped,
                          self.initialize_pose_estimate)
+
         # Get input data from laser scan.
         rospy.Subscriber("scan", LaserScan, self.laser_scan_callback)
 
@@ -135,7 +136,7 @@ class ParticleFilter(object):
         """
         self.set_minimum_weight()
         total_w = sum(p.w for p in self.particle_cloud)
-        if total_w != 1.0:
+        if total_w != 1.0 and total_w != 0:
             for i in range(len(self.particle_cloud)):
                 self.particle_cloud[i].w /= total_w
 
@@ -145,9 +146,9 @@ class ParticleFilter(object):
         Change any nan weightheta_dts in self.particle_cloud to the minimum weight
         value instead. Modifies self.particle_cloud directly.
         """
-        for p in self.particle_cloud:
-            if math.isnan(p.w):
-                p.w = self.minimum_weight
+        for i in range(len(self.particle_cloud)):
+            if math.isnan(self.particle_cloud[i].w):
+                self.particle_cloud[i].w = self.minimum_weight
 
     def create_particle_cloud(self, timestamp):
         """
@@ -275,9 +276,10 @@ class ParticleFilter(object):
         """
         x_d, y_d, theta_d = self.pose_delta
         # TODO Adjust particles by the delta!
-        for particle in self.particle_cloud:
-            particle.move([x_d, y_d])
-            particle.set_angle(theta_d)
+        for i in range(len(self.particle_cloud)):
+            self.particle_cloud[i].x -= x_d
+            self.particle_cloud[i].y -= y_d
+            self.particle_cloud[i].theta += theta_d
           
     def laser_update(self, msg):
         """
@@ -311,6 +313,9 @@ class ParticleFilter(object):
                 not(self.transform_helper.tf_listener.canTransform(self.base_frame, self.odom_frame, msg.header.stamp)):
             return
 
+        # Regardless of update, publish particle cloud visualization.
+        self.publish_particle_viz()
+
         if self.update_thresholds_met(msg):
             # TODO Determine what else needs updating here, and make those updates!
             self.odom_update(msg)
@@ -324,9 +329,7 @@ class ParticleFilter(object):
             self.transform_helper.fix_map_to_odom_transform(self.current_pose_estimate, msg.header.stamp)
         else:
             print("Update thresholds not met!")
-
-        # Regardless of update, publish particle cloud visualization.
-        self.publish_particle_viz()
+        
 
     def run(self):
         """
