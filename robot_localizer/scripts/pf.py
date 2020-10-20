@@ -48,9 +48,9 @@ class ParticleFilter(object):
         self.particle_cloud_config = {
             "n": 300,
             "xy_spread_size": 0.2,
-            "theta_spread_size": 20,
-            "xy_update_thresh": 0.2,
-            "theta_update_thresh": 20
+            "theta_spread_size": 10,
+            "xy_update_thresh": 0.01,
+            "theta_update_thresh": 1
         }
         self.minimum_weight = 0
 
@@ -71,7 +71,8 @@ class ParticleFilter(object):
         self.odom_frame = "odom"
         # The number of particles to incorporate in the mean value
         self.particles_to_incoporate_in_mean = 100
-        
+        # Adjustment factor for adding noise to the cloud.
+        self.var_adjustment = 0.1
     
         # ROS Publishers/Subscribers
         # Listen for new approximate initial robot location.
@@ -114,22 +115,19 @@ class ParticleFilter(object):
         mean_y = 0
         mean_x_angle = 0
         mean_y_angle = 0
-        # Calculate the mean of the top  
+        # Calculate the mean of the top  se
         particle_cloud_majority = sorted(self.particle_cloud, key=lambda x: x.w, reverse=True)
-        for particle in particle_cloud_majority:
+        for particle in particle_cloud_majority[self.particles_to_incoporate_in_mean:]:
             mean_x += particle.x * particle.w
             mean_y += particle.y * particle.w
-            total_dist = math.sqrt((particle.x)**2 + (particle.y)**2)
-            mean_x_angle += total_dist * math.cos(particle.theta) * particle.w
-            mean_y_angle += total_dist * math.sin(particle.theta) * particle.w      
-        mean_theta = np.arctan2(float(mean_y_angle), (mean_x_angle))
-        mean_x /= self.particle_cloud_config["n"]
-        mean_y /= self.particle_cloud_config["n"]
+            mean_theta = particle.theta * particle.w
+        mean_x /= self.particles_to_incoporate_in_mean
+        mean_y /= self.particles_to_incoporate_in_mean
+        mean_theta /= self.particles_to_incoporate_in_mean
 
-       
         # Use particle methods to convert particle to pose.
-        particle_mean = Particle(mean_x, mean_y, mean_theta)
-        self.current_pose_estimate = particle_mean.as_pose()
+        current_pose_particle = Particle(mean_x, mean_y, mean_theta)
+        self.current_pose_estimate = current_pose_particle.as_pose()
 
     def normalize_particles(self):
         """
@@ -137,14 +135,14 @@ class ParticleFilter(object):
         """
         self.set_minimum_weight()
         total_w = sum(p.w for p in self.particle_cloud)
-        if total_w > 1.0:
+        if total_w != 1.0:
             for i in range(len(self.particle_cloud)):
                 self.particle_cloud[i].w /= total_w
-            
+
 
     def set_minimum_weight(self):
         """
-        Change any nan weights in self.particle_cloud to the minimum weight
+        Change any nan weightheta_dts in self.particle_cloud to the minimum weight
         value instead. Modifies self.particle_cloud directly.
         """
         for p in self.particle_cloud:
@@ -183,8 +181,7 @@ class ParticleFilter(object):
         Select new distribution of particles, weighted by each particle's
         weight w. Modify object's particle_cloud instance directly.
         """
-        if self.debug:
-            print("Resampling.")
+        self.set_minimum_weight()
         if len(self.particle_cloud):
             self.normalize_particles()
             weights = [particle.w  if not math.isnan(particle.w) else self.minimum_weight for particle in self.particle_cloud]
@@ -195,16 +192,34 @@ class ParticleFilter(object):
                     replace=True,
                     p=weights,
                 ))]
-                # TODO Should we be injecting noise here.
-          
-        else:
-            if self.debug:
-                print ("No particle cloud, did not resample successfully.")
+            print(len(self.particle_cloud))
+        if self.debug:
+            print("Resampling.")
+
+    @staticmethod
+    def draw_random_sample(choices, probabilities, n):
+        """ 
+        Return a random sample of n elements from the set choices with the specified        
+        probabilities. Taken from assignment description.
+            choices: the values to sample from represented as a list
+            probabilities: the probability of selecting each element in choices
+            represented as a list
+            n: the number of samples
+        """
+        values = np.array(range(len(choices) - 1))
+        probs = np.array(probabilities)
+        bins = np.add.accumulate(probs)
+        inds = values[np.digitize(np.random.random_sample(n), bins)]
+        samples = []
+        for i in inds:
+            samples.append(deepcopy(choices[int(i)]))
+        return samples
 
     def publish_particle_viz(self):
         """
         Publish a visualization of self.particle_cloud for use in rviz.
         """
+        
         self.particle_pub.publish(
             PoseArray(
                 header=Header(
@@ -215,7 +230,6 @@ class ParticleFilter(object):
 
     def update_pose_delta(self, pose1, pose2):
         """
-        # TODO Should this be static or in helper functions?
         Calculate floating point distance between pose triples.
         """
         self.pose_delta[0] = pose2[0] - pose1[0]
@@ -250,6 +264,7 @@ class ParticleFilter(object):
 
         # return if update thresholds are exceeded
         x_d, y_d, theta_d = self.update_pose_delta(self.old_pose, current_pose)
+        self.old_pose = current_pose
         return math.fabs(x_d) > self.particle_cloud_config["xy_update_thresh"] or \
             math.fabs(y_d) > self.particle_cloud_config["xy_update_thresh"] or \
             math.fabs(theta_d) > self.particle_cloud_config["theta_update_thresh"]
@@ -269,13 +284,21 @@ class ParticleFilter(object):
         Use scan data in msg to update particle weights
         TODO Confirm this weighting scheme works
         """
-        for i in range(len(self.particle_cloud)):
-            o_d = self.occupancy_field.get_closest_obstacle_distance(
-                self.particle_cloud[i].x, self.particle_cloud[i].y)
-
-            if not(math.isnan(o_d)) and o_d != 0:
-                self.particle_cloud[i].w = 1.0/o_d
-
+        for particle in self.particle_cloud:
+            total_distance = 0
+            x_values = msg.ranges * np.cos(np.degrees(np.arange(0, 361, dtype=float) + particle.theta))
+            y_values = msg.ranges * np.sin(np.degrees(np.arange(0, 361, dtype=float) + particle.theta))      
+        
+            for x, y in zip(x_values, y_values):
+                if x == 0 and y == 0:
+                    continue
+                o_d = self.occupancy_field.get_closest_obstacle_distance(particle.x + x, particle.y + y)
+                if not(math.isnan(o_d)) and o_d != 0:
+                    total_distance += o_d
+            if total_distance > 0:
+                particle.w = 1.0/((total_distance**2))
+        self.normalize_particles()
+        
     def laser_scan_callback(self, msg):
         """
         Process incoming laser scan data.
@@ -299,6 +322,8 @@ class ParticleFilter(object):
             
             # Send out next map to odom transform with updated pose estimate.
             self.transform_helper.fix_map_to_odom_transform(self.current_pose_estimate, msg.header.stamp)
+        else:
+            print("Update thresholds not met!")
 
         # Regardless of update, publish particle cloud visualization.
         self.publish_particle_viz()
