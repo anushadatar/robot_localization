@@ -25,26 +25,38 @@ from particle import Particle
 
 class ParticleFilter(object):
     """
-    Particle filter node.
-    TODO Describe what this is and what its attributes are, once we know what
-    this is and what its attributes are.
+    Particle Filter ROS Node.
     """
 
     def __init__(self):
+        """
+        Initialize node and necessary helper function, particle filter attributes
+        """
         rospy.init_node('pf')
 
-        # Helper functions.
+        # Helper functions and debugging.
+        # Occupancy field used to get closest obstacle distance.
         self.occupancy_field = OccupancyField()
+        # Helper functions for coordinate transformations and operations.
         self.transform_helper = TFHelper()
 
         # Particle filter attributes.
+        # List of each particle in the filter.
         self.particle_cloud = []
-        # Config attributes: TODO Document
-            # n = Number of particles
-            # xy_spread_size:
-            # theta_spread_size:
-            # xy_update_thresh:
-            # theta_update_thresh:
+        # Config attributes:
+            # n = Number of particles in the particle cloud.
+            # xy_spread_size: Scale factor for the spread of the x and y
+            #                 coordinates of the initial particle cloud.
+            # theta_spread_size: Scale factor for the spread of the angles
+            #                    in the initial particle cloud.
+            # xy_update_thresh: Change in x and y coordinates of the robot
+            #                   position (as determined by odometry data) at
+            #                   which to re-estimate robot position and
+            #                   resample the particle cloud.
+            # theta_update_thresh: Change (in degrees) of the robot's
+            #                   orientation (as determined by odometry data) at
+            #                   which to re-estimate robot position and
+            #                   resample the particle cloud.
         self.particle_cloud_config = {
             "n": 100,
             "xy_spread_size": 1,
@@ -52,6 +64,7 @@ class ParticleFilter(object):
             "xy_update_thresh": 0.005,
             "theta_update_thresh": 0.001
         }
+        # The mininum weight of a particle, used to ensure non weights are NaN.
         self.minimum_weight = 0.0000001
 
         # Robot location attributes.
@@ -69,34 +82,33 @@ class ParticleFilter(object):
         self.map_frame = "map"
         # The name of the odom coordinate frame.
         self.odom_frame = "odom"
-        # The number of particles to incorporate in the mean value
+        # The number of the most highly-weighted particles to incorporate 
+        # in the mean value used to update the robot position estimate.
         self.particles_to_incoporate_in_mean = 100
-        # Adjustment factor for adding noise to the cloud.
+        # Adjustment factor for the magnitude of noise added to the cloud
+        # during the resampling step.
         self.noise_adjustment_factor = 0.001
     
         # ROS Publishers/Subscribers
         # Listen for new approximate initial robot location.
-        # Selected in rviz through the "2D Pose Estimate" button
+        # Selected in rviz through the "2D Pose Estimate" button.
         rospy.Subscriber("initialpose",
                          PoseWithCovarianceStamped,
                          self.initialize_pose_estimate)
-
         # Get input data from laser scan.
         rospy.Subscriber("scan", LaserScan, self.laser_scan_callback)
-
         # Publish particle cloud for rviz.
         self.particle_pub = rospy.Publisher("/particlecloud",
                                             PoseArray,
                                             queue_size=10)
-
-        # TODO Add some debugging prints, actually debug...
-        # Whether or not to print debugging messages.
+        # Debugging
+        # Set debug to true to print robot state information to the terminal.
         self.debug = True
 
     def initialize_pose_estimate(self, msg):
         """
         Initialize new pose estimate and particle filter. Store it as a
-        triple as (x, y, theta).
+        triple with the format (x, y, theta).
         """
         if self.debug:
             print("Got initial pose.")
@@ -109,8 +121,6 @@ class ParticleFilter(object):
         """
         Update robot's pose estimate given particles.
         TODO Improve docstring, add params etc.
-        
-        TODO This is still kind of an untested WIP
         """
         self.normalize_particles()
         mean_x = 0
@@ -294,7 +304,6 @@ class ParticleFilter(object):
     def laser_update(self, msg):
         """
         Use scan data in msg to update particle weights
-        TODO Confirm this weighting scheme works
         """
         for particle in self.particle_cloud:
             total_distance = 0
@@ -327,7 +336,6 @@ class ParticleFilter(object):
         self.publish_particle_viz()
 
         if self.update_thresholds_met(msg):
-            # TODO Determine what else needs updating here, and make those updates!
             self.odom_update(msg)
             self.laser_update(msg)
 
