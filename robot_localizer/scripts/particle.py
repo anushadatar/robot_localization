@@ -10,7 +10,6 @@ import tf
 
 from geometry_msgs.msg import Pose, Point, Quaternion
 
-
 class Particle(object):
     """ 
     Represents a hypothesis (particle) of the robot's pose consisting of x,y
@@ -40,6 +39,8 @@ class Particle(object):
     def as_pose(self):
         """ 
         A helper function to convert a particle to a geometry_msgs/Pose message.
+        
+        Returns a Pose message with the state associated with the given particle.
         """
         orientation_tuple = tf.transformations.quaternion_from_euler(
             0, 0, self.theta)
