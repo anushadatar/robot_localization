@@ -46,16 +46,11 @@ class ParticleFilter(object):
             # xy_update_thresh:
             # theta_update_thresh:
         self.particle_cloud_config = {
-            "n": 300,
-<<<<<<< HEAD
+            "n": 100,
             "xy_spread_size": 1,
             "theta_spread_size": 30,
-=======
-            "xy_spread_size": 1.5,
-            "theta_spread_size": 25,
->>>>>>> 6014c6ffd4bbfc5148477b3cb8d5ce21542848c2
-            "xy_update_thresh": 0.01,
-            "theta_update_thresh": 0.5
+            "xy_update_thresh": 0.005,
+            "theta_update_thresh": 0.001
         }
         self.minimum_weight = 0.0000001
 
@@ -77,7 +72,7 @@ class ParticleFilter(object):
         # The number of particles to incorporate in the mean value
         self.particles_to_incoporate_in_mean = 100
         # Adjustment factor for adding noise to the cloud.
-        self.noise_adjustment_factor = 0.1
+        self.noise_adjustment_factor = 0.001
     
         # ROS Publishers/Subscribers
         # Listen for new approximate initial robot location.
@@ -103,7 +98,8 @@ class ParticleFilter(object):
         Initialize new pose estimate and particle filter. Store it as a
         triple as (x, y, theta).
         """
-        print("Got initial pose.")
+        if self.debug:
+            print("Got initial pose.")
         self.xy_theta = \
             self.transform_helper.convert_pose_to_xy_and_theta(msg.pose.pose)
         self.create_particle_cloud(msg.header.stamp)
@@ -196,7 +192,6 @@ class ParticleFilter(object):
         if len(self.particle_cloud):
             self.normalize_particles()
             weights = [particle.w  if not math.isnan(particle.w) else self.minimum_weight for particle in self.particle_cloud]
-            print(weights)
             # Resample points based on their weights.
             self.particle_cloud = [deepcopy(particle) for particle in list(np.random.choice(
                     self.particle_cloud,
@@ -204,6 +199,11 @@ class ParticleFilter(object):
                     replace=True,
                     p=weights,
                 ))]
+            for p in self.particle_cloud:
+               particle_noise = np.random.randn(3)
+               p.x += particle_noise[0] * self.noise_adjustment_factor
+               p.y += particle_noise[1] * self.noise_adjustment_factor
+               p.theta += particle_noise[2] * self.noise_adjustment_factor            
         if self.debug:
             print("Resampling.")
 
@@ -237,7 +237,8 @@ class ParticleFilter(object):
                     frame_id=self.map_frame),
                 poses=[
                     p.as_pose() for p in self.particle_cloud]))
-        print("Publishing new visualization.")
+        if self.debug:
+            print("Publishing new visualization.")
 
     def update_pose_delta(self, pose1, pose2):
         """
@@ -335,7 +336,8 @@ class ParticleFilter(object):
             self.resample()
 
         else:
-            print("Update thresholds not met!")
+            if self.debug:
+                print("Update thresholds not met!")
         
 
     def run(self):
