@@ -46,9 +46,9 @@ class ParticleFilter(object):
             # xy_update_thresh:
             # theta_update_thresh:
         self.particle_cloud_config = {
-            "n": 300,
-            "xy_spread_size": 0.2,
-            "theta_spread_size": 10,
+            "n": 100,
+            "xy_spread_size": 1.5,
+            "theta_spread_size": 25,
             "xy_update_thresh": 0.01,
             "theta_update_thresh": 0.5
         }
@@ -104,7 +104,7 @@ class ParticleFilter(object):
         self.create_particle_cloud(msg.header.stamp)
         self.pose_set = True
 
-    def update_pose_estimate(self):
+    def update_pose_estimate(self, timestamp):
         """
         Update robot's pose estimate given particles.
         TODO Improve docstring, add params etc.
@@ -114,8 +114,7 @@ class ParticleFilter(object):
         self.normalize_particles()
         mean_x = 0
         mean_y = 0
-        mean_x_angle = 0
-        mean_y_angle = 0
+        mean_theta = 0
         # Calculate the mean of the top  se
         particle_cloud_majority = sorted(self.particle_cloud, key=lambda x: x.w, reverse=True)
         for particle in particle_cloud_majority[self.particles_to_incoporate_in_mean:]:
@@ -130,13 +129,16 @@ class ParticleFilter(object):
         current_pose_particle = Particle(mean_x, mean_y, mean_theta)
         self.current_pose_estimate = current_pose_particle.as_pose()
 
+        # Send out next map to odom transform with updated pose estimate.
+        self.transform_helper.fix_map_to_odom_transform(self.current_pose_estimate, timestamp)
+
     def normalize_particles(self):
         """
         Ensures particle weights sum to 1
         """
         self.set_minimum_weight()
         total_w = sum(p.w for p in self.particle_cloud)
-        if total_w != 1.0 and total_w != 0:
+        if total_w != 1.0:
             for i in range(len(self.particle_cloud)):
                 self.particle_cloud[i].w /= total_w
 
@@ -146,14 +148,18 @@ class ParticleFilter(object):
         Change any nan weightheta_dts in self.particle_cloud to the minimum weight
         value instead. Modifies self.particle_cloud directly.
         """
+
         for i in range(len(self.particle_cloud)):
             if math.isnan(self.particle_cloud[i].w):
                 self.particle_cloud[i].w = self.minimum_weight
+
 
     def create_particle_cloud(self, timestamp):
         """
         TODO Improve docstring, add params etc.
         """
+        if (self.debug):
+            print("Creating particle cloud.")
         if self.xy_theta is None:
             self.xy_theta = self.transform_helper.convert_pose_to_xy_and_theta(
                 self.odom_pose.pose)
@@ -175,7 +181,7 @@ class ParticleFilter(object):
             self.particle_cloud.append(Particle(x, y, theta, 1))
 
         self.normalize_particles()
-        self.update_pose_estimate()
+        self.update_pose_estimate(timestamp)
 
     def resample(self):
         """
@@ -193,28 +199,9 @@ class ParticleFilter(object):
                     replace=True,
                     p=weights,
                 ))]
-            print(len(self.particle_cloud))
-        if self.debug:
-            print("Resampling.")
-
-    @staticmethod
-    def draw_random_sample(choices, probabilities, n):
-        """ 
-        Return a random sample of n elements from the set choices with the specified        
-        probabilities. Taken from assignment description.
-            choices: the values to sample from represented as a list
-            probabilities: the probability of selecting each element in choices
-            represented as a list
-            n: the number of samples
-        """
-        values = np.array(range(len(choices) - 1))
-        probs = np.array(probabilities)
-        bins = np.add.accumulate(probs)
-        inds = values[np.digitize(np.random.random_sample(n), bins)]
-        samples = []
-        for i in inds:
-            samples.append(deepcopy(choices[int(i)]))
-        return samples
+            if self.debug:
+                print("Resampling.")
+                print(len(self.particle_cloud))
 
     def publish_particle_viz(self):
         """
@@ -228,6 +215,7 @@ class ParticleFilter(object):
                     frame_id=self.map_frame),
                 poses=[
                     p.as_pose() for p in self.particle_cloud]))
+        print("Publishing new visualization.")
 
     def update_pose_delta(self, pose1, pose2):
         """
@@ -275,7 +263,6 @@ class ParticleFilter(object):
         Use self.pose_delta to update particle locations
         """
         x_d, y_d, theta_d = self.pose_delta
-        # TODO Adjust particles by the delta!
         for i in range(len(self.particle_cloud)):
             self.particle_cloud[i].x -= x_d
             self.particle_cloud[i].y -= y_d
@@ -297,7 +284,7 @@ class ParticleFilter(object):
                 o_d = self.occupancy_field.get_closest_obstacle_distance(particle.x + x, particle.y + y)
                 if not(math.isnan(o_d)) and o_d != 0:
                     total_distance += o_d
-            if total_distance > 0:
+            if total_distance:
                 particle.w = 1.0/((total_distance**2))
         self.normalize_particles()
         
@@ -322,11 +309,9 @@ class ParticleFilter(object):
             self.laser_update(msg)
 
             # Update the self.current_pose_estimate with the mean particle and resample.
-            self.update_pose_estimate()
+            self.update_pose_estimate(msg.header.stamp)
             self.resample()
-            
-            # Send out next map to odom transform with updated pose estimate.
-            self.transform_helper.fix_map_to_odom_transform(self.current_pose_estimate, msg.header.stamp)
+
         else:
             print("Update thresholds not met!")
         
@@ -335,7 +320,7 @@ class ParticleFilter(object):
         """
         TODO Improve docstring, add params etc.
         """
-        r = rospy.Rate(5)
+        r = rospy.Rate(2)
         while not(rospy.is_shutdown()):
             # in the main loop all we do is continuously broadcast the latest
             # map to odom transform
