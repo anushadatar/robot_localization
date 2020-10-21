@@ -47,12 +47,12 @@ class ParticleFilter(object):
             # theta_update_thresh:
         self.particle_cloud_config = {
             "n": 300,
-            "xy_spread_size": 0.2,
-            "theta_spread_size": 10,
+            "xy_spread_size": 1,
+            "theta_spread_size": 30,
             "xy_update_thresh": 0.01,
             "theta_update_thresh": 0.5
         }
-        self.minimum_weight = 0.0001
+        self.minimum_weight = 0.0000001
 
         # Robot location attributes.
         # Pose estimate, stored as a triple (x, y, theta). Used to create particle cloud.
@@ -145,7 +145,7 @@ class ParticleFilter(object):
         """
         Change any nan weightheta_dts in self.particle_cloud to the minimum weight
         value instead. Modifies self.particle_cloud directly.
-        """
+        """ 
         for i in range(len(self.particle_cloud)):
             if math.isnan(self.particle_cloud[i].w):
                 self.particle_cloud[i].w = self.minimum_weight
@@ -186,6 +186,7 @@ class ParticleFilter(object):
         if len(self.particle_cloud):
             self.normalize_particles()
             weights = [particle.w  if not math.isnan(particle.w) else self.minimum_weight for particle in self.particle_cloud]
+            print(weights)
             # Resample points based on their weights.
             self.particle_cloud = [deepcopy(particle) for particle in list(np.random.choice(
                     self.particle_cloud,
@@ -193,7 +194,6 @@ class ParticleFilter(object):
                     replace=True,
                     p=weights,
                 ))]
-            print(len(self.particle_cloud))
         if self.debug:
             print("Resampling.")
 
@@ -220,7 +220,6 @@ class ParticleFilter(object):
         """
         Publish a visualization of self.particle_cloud for use in rviz.
         """
-        
         self.particle_pub.publish(
             PoseArray(
                 header=Header(
@@ -298,7 +297,7 @@ class ParticleFilter(object):
                 if not(math.isnan(o_d)) and o_d != 0:
                     total_distance += o_d
             if total_distance > 0:
-                particle.w = 1.0/((total_distance**2))
+                particle.w = 1.0/((total_distance**3))
         self.normalize_particles()
         
     def laser_scan_callback(self, msg):
