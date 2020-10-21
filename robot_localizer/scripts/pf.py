@@ -46,7 +46,7 @@ class ParticleFilter(object):
             # xy_update_thresh:
             # theta_update_thresh:
         self.particle_cloud_config = {
-            "n": 100,
+            "n": 300,
             "xy_spread_size": 1.5,
             "theta_spread_size": 25,
             "xy_update_thresh": 0.01,
@@ -72,7 +72,7 @@ class ParticleFilter(object):
         # The number of particles to incorporate in the mean value
         self.particles_to_incoporate_in_mean = 100
         # Adjustment factor for adding noise to the cloud.
-        self.var_adjustment = 0.1
+        self.noise_adjustment_factor = 0.1
     
         # ROS Publishers/Subscribers
         # Listen for new approximate initial robot location.
@@ -199,6 +199,11 @@ class ParticleFilter(object):
                     replace=True,
                     p=weights,
                 ))]
+            for p in self.particle_cloud:
+               particle_noise = np.random.randn(3)
+               p.x += particle_noise[0] * self.noise_adjustment_factor
+               p.y += particle_noise[1] * self.noise_adjustment_factor
+               p.theta += particle_noise[2] * self.noise_adjustment_factor
             if self.debug:
                 print("Resampling.")
                 print(len(self.particle_cloud))
